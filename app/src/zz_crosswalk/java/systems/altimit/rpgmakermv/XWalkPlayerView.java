@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Altimit Community Contributors
+ * Copyright (c) 2017-2018 Altimit Community Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,15 @@ import android.os.Build;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
 import android.view.View;
+import android.webkit.JavascriptInterface;
 
+import org.xwalk.core.XWalkResourceClient;
 import org.xwalk.core.XWalkSettings;
 import org.xwalk.core.XWalkView;
+
+import java.lang.reflect.Method;
+import java.util.LinkedList;
+import java.util.Queue;
 
 /**
  * Created by felixjones on 12/05/2017.
@@ -50,24 +56,19 @@ public class XWalkPlayerView extends XWalkView {
 
         setBackgroundColor(Color.BLACK);
 
-        XWalkSettings webSettings = getSettings();
         enableJavascript();
+
+        XWalkSettings webSettings = getSettings();
         webSettings.setAllowContentAccess(true);
         webSettings.setAllowFileAccess(true);
         webSettings.setLoadsImagesAutomatically(true);
         webSettings.setDomStorageEnabled(true);
         webSettings.setDatabaseEnabled(true);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-            webSettings.setAllowFileAccessFromFileURLs(true);
-            webSettings.setAllowUniversalAccessFromFileURLs(true);
-        }
+        webSettings.setAllowFileAccessFromFileURLs(true);
+        webSettings.setAllowUniversalAccessFromFileURLs(true);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        } else {
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-        }
+        setResourceClient(new ResourceClient(this));
     }
 
     @Override
@@ -103,12 +104,31 @@ public class XWalkPlayerView extends XWalkView {
     /**
      *
      */
+    private class ResourceClient extends XWalkResourceClient {
+
+        private ResourceClient(XWalkView view) {
+            super(view);
+        }
+
+        @Override
+        public void onLoadFinished(XWalkView view, String url) {
+            mPlayer.onPageFinished();
+        }
+
+    }
+
+    /**
+     *
+     */
     private static final class XWalkPlayer implements Player {
 
         private XWalkView mXWalkView;
+        private Queue<Runnable> mOnPageFinishedActions;
 
         private XWalkPlayer(XWalkView xWalkView) {
             mXWalkView = xWalkView;
+
+            mOnPageFinishedActions = new LinkedList<>();
         }
 
         @Override
@@ -122,12 +142,20 @@ public class XWalkPlayerView extends XWalkView {
         }
 
         @Override
-        public void loadUrl(String url) {
+        public void loadUrl(String url, Runnable onLoad) {
+            mOnPageFinishedActions.add(onLoad);
             mXWalkView.loadUrl(url);
         }
 
         @Override
         public void addJavascriptInterface(Object object, String name) {
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.JELLY_BEAN) {
+                for (Method method : object.getClass().getMethods()) {
+                    if (method.isAnnotationPresent(JavascriptInterface.class)) {
+
+                    }
+                }
+            }
             mXWalkView.addJavascriptInterface(object, name);
         }
 
@@ -179,6 +207,12 @@ public class XWalkPlayerView extends XWalkView {
         @Override
         public void onDestroy() {
             mXWalkView.onDestroy();
+        }
+
+        void onPageFinished() {
+            while (!mOnPageFinishedActions.isEmpty()) {
+                mOnPageFinishedActions.remove().run();
+            }
         }
 
     }

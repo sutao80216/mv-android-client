@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2018 Altimit Community Contributors
+ * Copyright (c) 2018 Altimit Community Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,27 +14,23 @@
  * limitations under the License.
  */
 
-buildscript {
-    repositories {
-        jcenter()
-        google()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:3.2.1'
-    }
-}
+package systems.altimit.libgoogleplay.handlers;
 
-allprojects {
-    repositories {
-        jcenter()
-        google()
+import android.app.Activity;
 
-        maven {
-            url 'https://maven.mozilla.org/maven2'
-        }
+/**
+ * Created by mgjus on 3/7/2018.
+ */
+abstract class AbstractHandler<T> {
+    Activity mParentActivity;
+
+    T mClient = null;
+
+    AbstractHandler(Activity activity) {
+        mParentActivity =  activity;
     }
-}
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
+    public void setClient(T serviceClient) {
+        mClient = serviceClient;
+    }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Altimit Community Contributors
+ * Copyright (c) 2017-2018 Altimit Community Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,16 +17,15 @@
 package systems.altimit.rpgmakermv;
 
 import android.content.Context;
-
-import org.xwalk.core.JavascriptInterface;
+import android.webkit.JavascriptInterface;
 
 /**
- * Created by felixjones on 12/05/2017.
+ * Created by felixjones on 07/10/2018.
  */
 public class PlayerHelper {
 
     public static Player create(Context context) {
-        return new XWalkPlayerView(context).getPlayer();
+        return new WebPlayerView(context).getPlayer();
     }
 
     /**

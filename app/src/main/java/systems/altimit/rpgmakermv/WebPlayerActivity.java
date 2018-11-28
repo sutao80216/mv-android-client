@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Altimit Community Contributors
+ * Copyright (c) 2017-2018 Altimit Community Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package systems.altimit.rpgmakermv;
 import android.app.Activity;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -28,6 +29,12 @@ import android.view.View;
 
 import java.io.File;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+import systems.altimit.clientapi.AbstractExtension;
 
 /**
  * Created by felixjones on 28/04/2017.
@@ -37,6 +44,7 @@ public class WebPlayerActivity extends Activity {
     private static final String TOUCH_INPUT_ON_CANCEL = "TouchInput._onCancel();";
 
     private Player mPlayer;
+    private List<AbstractExtension> mExtensions;
     private AlertDialog mQuitDialog;
     private int mSystemUiVisibility;
 
@@ -61,35 +69,77 @@ public class WebPlayerActivity extends Activity {
         }
 
         mPlayer = PlayerHelper.create(this);
+
+        mExtensions = new ArrayList<>();
+        if ("webview".equals(BuildConfig.FLAVOR)) {
+            try {
+                for (String extensionClass : BuildConfig.EXTENSION_CLASSES) {
+                    mExtensions.add((AbstractExtension) Class.forName(extensionClass).getConstructor(Context.class).newInstance(this));
+                }
+            } catch (Exception e) {
+                e.printStackTrace(); // A bad extension will fail and print a stack-trace
+            }
+        }
+
         mPlayer.setKeepScreenOn();
         setContentView(mPlayer.getView());
 
-        if (!addBootstrapInterface(mPlayer)) {
+        List<String> extensionSources = new ArrayList<>();
+        for (AbstractExtension extension : mExtensions) {
+            for (Map.Entry<String, Object> entry : extension.getJavascriptInterfaces().entrySet()) {
+                mPlayer.addJavascriptInterface(entry.getValue(), entry.getKey());
+            }
+            extensionSources.addAll(Arrays.asList(extension.getJavascriptSources()));
+        }
+
+        if (!addBootstrapInterface(mPlayer, extensionSources)) {
             Uri.Builder projectURIBuilder = Uri.fromFile(new File(getString(R.string.mv_project_index))).buildUpon();
             Bootstrapper.appendQuery(projectURIBuilder, getString(R.string.query_noaudio));
             if (BuildConfig.SHOW_FPS) {
                 Bootstrapper.appendQuery(projectURIBuilder, getString(R.string.query_showfps));
             }
-            mPlayer.loadUrl(projectURIBuilder.build().toString());
+            mPlayer.loadUrl(projectURIBuilder.build().toString(), new SourceListEvaluator(mPlayer, extensionSources));
         }
     }
 
     @Override
     public void onBackPressed() {
         if (BuildConfig.BACK_BUTTON_QUITS) {
-            mQuitDialog.show();
+            if (mQuitDialog != null) {
+                mQuitDialog.show();
+            } else {
+                super.onBackPressed();
+            }
         } else {
             mPlayer.evaluateJavascript(TOUCH_INPUT_ON_CANCEL);
         }
     }
 
     @Override
-    protected void onPause() {
-        super.onPause();
-        if (mPlayer != null) {
-            mPlayer.pauseTimers();
-            mPlayer.onHide();
+    protected void onStart() {
+        super.onStart();
+        for (AbstractExtension extension : mExtensions) {
+            extension.onStart();
         }
+    }
+
+    @Override
+    protected void onStop() {
+        for (AbstractExtension extension : mExtensions) {
+            extension.onStop();
+        }
+        super.onStop();
+    }
+
+    @Override
+    protected void onPause() {
+        mPlayer.pauseTimers();
+        mPlayer.onHide();
+
+        for (AbstractExtension extension : mExtensions) {
+            extension.onPause();
+        }
+        super.onPause();
     }
 
     @Override
@@ -99,14 +149,35 @@ public class WebPlayerActivity extends Activity {
         if (mPlayer != null) {
             mPlayer.resumeTimers();
             mPlayer.onShow();
+
+            for (AbstractExtension extension : mExtensions) {
+                extension.onResume();
+            }
         }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (mPlayer != null) {
-            mPlayer.onDestroy();
+        mPlayer.onDestroy();
+
+        for (AbstractExtension extension : mExtensions) {
+            extension.onDestroy();
+        }
+    }
+
+    @Override
+    protected void onRestart() {
+        super.onRestart();
+        for (AbstractExtension extension : mExtensions) {
+            extension.onRestart();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        for (AbstractExtension extension : mExtensions) {
+            extension.onActivityResult(requestCode, resultCode, data);
         }
     }
 
@@ -121,35 +192,58 @@ public class WebPlayerActivity extends Activity {
             }
         }
 
-        mQuitDialog = new AlertDialog.Builder(this)
-                .setPositiveButton("Cancel", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        dialog.dismiss();
-                    }
-                })
-                .setOnDismissListener(new DialogInterface.OnDismissListener() {
-                    @Override
-                    public void onDismiss(DialogInterface dialog) {
-                        getWindow().getDecorView().setSystemUiVisibility(mSystemUiVisibility);
-                    }
-                })
-                .setNegativeButton("Quit", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        WebPlayerActivity.super.onBackPressed();
-                    }
-                })
-                .setMessage(quitMessage.toString())
-                .create();
+        if (quitMessage.length() > 0) {
+            mQuitDialog = new AlertDialog.Builder(this)
+                    .setPositiveButton("Cancel", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.dismiss();
+                        }
+                    })
+                    .setOnDismissListener(new DialogInterface.OnDismissListener() {
+                        @Override
+                        public void onDismiss(DialogInterface dialog) {
+                            getWindow().getDecorView().setSystemUiVisibility(mSystemUiVisibility);
+                        }
+                    })
+                    .setNegativeButton("Quit", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            WebPlayerActivity.super.onBackPressed();
+                        }
+                    })
+                    .setMessage(quitMessage.toString())
+                    .create();
+        }
     }
 
-    private boolean addBootstrapInterface(Player webView) {
+    private static boolean addBootstrapInterface(Player player, List<String> sources) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            new Bootstrapper(webView);
+            new Bootstrapper(player, sources);
             return true;
         }
         return false;
+    }
+
+    /**
+     *
+     */
+    private static final class SourceListEvaluator implements Runnable {
+
+        private Player mPlayer;
+        private List<String> mSources;
+
+        private SourceListEvaluator(Player player, List<String> sourceList) {
+            mPlayer = player;
+            mSources = sourceList;
+        }
+
+        @Override
+        public void run() {
+            for (String source : mSources) {
+                mPlayer.evaluateJavascript(source);
+            }
+        }
     }
 
     /**
@@ -170,13 +264,15 @@ public class WebPlayerActivity extends Activity {
         private static final String PREPARE_FUNC = "prepare( webgl(), webaudio(), false )";
 
         private Player mPlayer;
+        private List<String> mExtensionSources;
         private Uri.Builder mURIBuilder;
 
-        private Bootstrapper(Player player) {
+        private Bootstrapper(Player player, List<String> sourceList) {
             Context context = player.getContext();
             player.addJavascriptInterface(this, Bootstrapper.INTERFACE);
 
             mPlayer = player;
+            mExtensionSources = sourceList;
             mURIBuilder = Uri.fromFile(new File(context.getString(R.string.mv_project_index))).buildUpon();
             mPlayer.loadData(new String(Base64.decode(context.getString(R.string.webview_default_page), Base64.DEFAULT), Charset.forName("UTF-8")));
         }
@@ -211,7 +307,7 @@ public class WebPlayerActivity extends Activity {
         @Override
         public void run() {
             mPlayer.removeJavascriptInterface(INTERFACE);
-            mPlayer.loadUrl(mURIBuilder.build().toString());
+            mPlayer.loadUrl(mURIBuilder.build().toString(), new SourceListEvaluator(mPlayer, mExtensionSources));
         }
 
     }

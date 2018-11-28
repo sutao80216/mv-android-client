@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2018 Altimit Community Contributors
+ * Copyright (c) 2018 Altimit Community Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,27 +14,20 @@
  * limitations under the License.
  */
 
-buildscript {
-    repositories {
-        jcenter()
-        google()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:3.2.1'
-    }
-}
-
-allprojects {
-    repositories {
-        jcenter()
-        google()
-
-        maven {
-            url 'https://maven.mozilla.org/maven2'
-        }
+function androidRequire( api ) {
+    switch ( api ) {
+    case 'path':
+        return androidRequire.path;
+    case 'fs':
+        return androidRequire.fs;
     }
 }
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
-}
+function process() {}
+( function() {
+
+    process.mainModule = {
+        filename: __android_api.mainModuleFilename()
+    };
+
+} )();

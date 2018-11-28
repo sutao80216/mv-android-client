@@ -17,7 +17,8 @@
 package systems.altimit.rpgmakermv;
 
 import android.content.Context;
-import android.webkit.JavascriptInterface;
+
+import org.xwalk.core.JavascriptInterface;
 
 /**
  * Created by felixjones on 12/05/2017.
@@ -25,7 +26,7 @@ import android.webkit.JavascriptInterface;
 public class PlayerHelper {
 
     public static Player create(Context context) {
-        return new WebPlayerView(context).getPlayer();
+        return new XWalkPlayerView(context).getPlayer();
     }
 
     /**
